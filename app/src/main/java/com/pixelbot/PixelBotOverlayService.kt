@@ -126,7 +126,7 @@ class PixelBotOverlayService : Service() {
             tick++
             val now = System.currentTimeMillis()
             val useReaction = reactionIndex >= 0 && now < reactionUntil
-            val bob = (sin(tick / 7.0) * 3.5f * resources.displayMetrics.density)
+            val bob = (sin(tick / 7.0).toFloat() * 3.5f * resources.displayMetrics.density)
             val target = (width * 0.94f)
             val drawSize = target
             val top = (height - drawSize) / 2f + bob
