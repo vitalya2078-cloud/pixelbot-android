@@ -38,6 +38,7 @@ class PixelBotScreenCaptureService : Service() {
         ImageLabeling.getClient(ImageLabelerOptions.Builder().setConfidenceThreshold(0.55f).build())
     }
     private var busy = false
+    private var lastAnalysisAt = 0L
     private var lastSummary = ""
     private var lastSentAt = 0L
 
@@ -89,12 +90,13 @@ class PixelBotScreenCaptureService : Service() {
         val density = metrics.densityDpi
         reader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
         reader!!.setOnImageAvailableListener({ source ->
-            if (!busy) {
+            val now = System.currentTimeMillis()
+            if (!busy && now - lastAnalysisAt >= 8000L) {
                 val image = source.acquireLatestImage()
                 if (image != null) {
                     val bitmap = imageToBitmap(image)
                     image.close()
-                    if (bitmap != null) analyze(bitmap)
+                    if (bitmap != null) { lastAnalysisAt = now; analyze(bitmap) }
                 }
             } else {
                 source.acquireLatestImage()?.close()
@@ -119,7 +121,11 @@ class PixelBotScreenCaptureService : Service() {
         padded.copyPixelsFromBuffer(buffer)
         val cropped = Bitmap.createBitmap(padded, 0, 0, image.width, image.height)
         if (padded != cropped) padded.recycle()
-        return cropped
+        if (cropped.width <= 640) return cropped
+        val scaledHeight = (cropped.height * (640f / cropped.width)).toInt().coerceAtLeast(1)
+        val scaled = Bitmap.createScaledBitmap(cropped, 640, scaledHeight, true)
+        if (scaled != cropped) cropped.recycle()
+        return scaled
     }
 
     private fun analyze(bitmap: Bitmap) {
