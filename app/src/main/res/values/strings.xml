@@ -1,0 +1,3 @@
+<resources>
+    <string name="accessibility_description">Определяет активное приложение и события интерфейса. Не читает текст элементов управления.</string>
+</resources>

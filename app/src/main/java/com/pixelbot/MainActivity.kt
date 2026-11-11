@@ -2,6 +2,7 @@ package com.pixelbot
 
 import android.app.Activity
 import android.content.Intent
+import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
@@ -10,12 +11,13 @@ import android.widget.LinearLayout
 import android.widget.TextView
 
 class MainActivity : Activity() {
+    private val captureRequest = 7401
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(28, 40, 28, 28)
+            setPadding(28, 36, 28, 28)
         }
         layout.addView(TextView(this).apply {
             text = "PixelBot"
@@ -23,45 +25,49 @@ class MainActivity : Activity() {
             setPadding(0, 0, 0, 8)
         })
         layout.addView(TextView(this).apply {
-            text = "Компаньон, который реагирует на уведомления из любых приложений. PixelBot определяет только приложение-источник и не читает текст уведомлений, имена отправителей или содержимое сообщений."
-            textSize = 16f
+            text = "Экранный компаньон: наблюдает за активностью приложений, анализирует изображение экрана и распознаёт текст локально на устройстве. Кадры и распознанный текст не отправляются на сервер и не сохраняются."
+            textSize = 15f
             setPadding(0, 0, 0, 20)
         })
-        layout.addView(TextView(this).apply {
-            text = "1. Разреши показ поверх других приложений.\n2. Если Android заблокировал доступ к уведомлениям: открой сведения о PixelBot → меню ⋮ → «Разрешить ограниченные настройки».\n3. Вернись в доступ к уведомлениям и включи PixelBot.\n\nЧтобы реагировать на уведомления всех приложений, включи PixelBot в системном списке доступа к уведомлениям."
-            textSize = 14f
-            setPadding(0, 0, 0, 18)
-        })
-        layout.addView(Button(this).apply {
-            text = "Открыть настройки PixelBot"
-            setOnClickListener {
-                startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
-            }
-        })
-        layout.addView(Button(this).apply {
-            text = "Разрешить показ поверх окон"
-            setOnClickListener {
+        button(layout, "1. Разрешить показ поверх окон") {
+            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+        }
+        button(layout, "2. Включить события экрана (Accessibility)") {
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        }
+        button(layout, "3. Запустить анализ экрана") {
+            val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+            startActivityForResult(manager.createScreenCaptureIntent(), captureRequest)
+        }
+        button(layout, "Показать / скрыть маскота") {
+            if (!Settings.canDrawOverlays(this)) {
                 startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
-            }
-        })
-        layout.addView(Button(this).apply {
-            text = "Открыть доступ к уведомлениям"
-            setOnClickListener {
-                startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"))
-            }
-        })
-        layout.addView(Button(this).apply {
-            text = "Показать / скрыть маскота"
-            setOnClickListener {
-                if (!Settings.canDrawOverlays(this@MainActivity)) {
-                    startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
-                    return@setOnClickListener
-                }
+            } else {
                 val action = if (PixelBotOverlayService.isVisible) PixelBotOverlayService.ACTION_HIDE else PixelBotOverlayService.ACTION_SHOW
-                val serviceIntent = Intent(this@MainActivity, PixelBotOverlayService::class.java).apply { this.action = action }
-                startService(serviceIntent)
+                startService(Intent(this, PixelBotOverlayService::class.java).setAction(action))
             }
+        }
+        layout.addView(TextView(this).apply {
+            text = "Важно: Android отдельно спросит разрешение на захват экрана и покажет системный индикатор. Остановить анализ можно в уведомлении PixelBot. Не запускай захват на экранах с паролями, банковскими данными или другой конфиденциальной информацией."
+            textSize = 13f
+            setPadding(0, 22, 0, 0)
         })
         setContentView(layout)
+    }
+
+    private fun button(layout: LinearLayout, label: String, action: () -> Unit) {
+        layout.addView(Button(this).apply { text = label; setOnClickListener { action() } })
+    }
+
+    @Deprecated("Deprecated in Android API, retained for compatibility")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == captureRequest && resultCode == RESULT_OK && data != null) {
+            val service = Intent(this, PixelBotScreenCaptureService::class.java)
+                .putExtra(PixelBotScreenCaptureService.EXTRA_RESULT_CODE, resultCode)
+                .putExtra(PixelBotScreenCaptureService.EXTRA_RESULT_DATA, data)
+            startForegroundService(service)
+            startService(Intent(this, PixelBotOverlayService::class.java).setAction(PixelBotOverlayService.ACTION_SHOW))
+        }
     }
 }
