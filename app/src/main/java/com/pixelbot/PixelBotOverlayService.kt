@@ -19,7 +19,6 @@ import kotlin.math.sin
 class PixelBotOverlayService : Service() {
     private lateinit var windowManager: WindowManager
     private var mascot: MascotView? = null
-    private var params: WindowManager.LayoutParams? = null
     private val handler = Handler(Looper.getMainLooper())
     private var currentSource: String = "idle"
 
@@ -33,7 +32,7 @@ class PixelBotOverlayService : Service() {
             ACTION_HIDE -> hideMascot()
             ACTION_SHOW -> { currentSource = "idle"; showMascot() }
             ACTION_NOTIFICATION -> {
-                currentSource = intent.getStringExtra(EXTRA_SOURCE) ?: "notification"
+                currentSource = intent.getStringExtra(EXTRA_SOURCE) ?: "other"
                 showMascot()
                 mascot?.setReaction(currentSource)
             }
@@ -43,7 +42,8 @@ class PixelBotOverlayService : Service() {
 
     private fun showMascot() {
         if (mascot != null || !android.provider.Settings.canDrawOverlays(this)) return
-        val size = (112 * resources.displayMetrics.density).toInt()
+        // Larger companion: 148 dp, with the sprite filling most of the transparent canvas.
+        val size = (148 * resources.displayMetrics.density).toInt()
         val view = MascotView(this)
         val layoutParams = WindowManager.LayoutParams(
             size, size,
@@ -78,7 +78,6 @@ class PixelBotOverlayService : Service() {
             }
         })
         mascot = view
-        params = layoutParams
         isVisible = true
         windowManager.addView(view, layoutParams)
     }
@@ -86,7 +85,6 @@ class PixelBotOverlayService : Service() {
     private fun hideMascot() {
         mascot?.let { runCatching { windowManager.removeView(it) } }
         mascot = null
-        params = null
         isVisible = false
     }
 
@@ -101,23 +99,22 @@ class PixelBotOverlayService : Service() {
         private val paint = Paint().apply { isFilterBitmap = false; isAntiAlias = false }
         private val mascotSheet: Bitmap? = loadSheet("mascot_sheet")
         private val reactionSheet: Bitmap? = loadSheet("reactions_sheet")
+        private var reactionIndex = -1
+        private var reactionUntil = 0L
+        private var tick = 0
 
         private fun loadSheet(name: String): Bitmap? {
             val id = resources.getIdentifier(name, "drawable", packageName)
             return if (id != 0) BitmapFactory.decodeResource(resources, id) else null
         }
-        private var reactionIndex = -1
-        private var reactionUntil = 0L
-        private var tick = 0
-        private val frameSize = mascotSheet?.width?.div(4) ?: 0
 
         fun setReaction(source: String) {
             reactionIndex = when (source) {
                 "vk" -> 1
                 "telegram" -> 2
-                else -> 0
+                else -> 0 // Generic notification reaction for every other app.
             }
-            reactionUntil = System.currentTimeMillis() + 2600L
+            reactionUntil = System.currentTimeMillis() + 3200L
             invalidate()
         }
 
@@ -126,24 +123,30 @@ class PixelBotOverlayService : Service() {
             tick++
             val now = System.currentTimeMillis()
             val useReaction = reactionIndex >= 0 && now < reactionUntil
-            val bob = (sin(tick / 7.0).toFloat() * 3.5f * resources.displayMetrics.density)
-            val target = (width * 0.94f)
-            val drawSize = target
+            val density = resources.displayMetrics.density
+            val bob = sin(tick / 7.0).toFloat() * 4.5f * density
+            val drawSize = width * 0.98f
             val top = (height - drawSize) / 2f + bob
             val left = (width - drawSize) / 2f
 
             val sheet = if (useReaction) reactionSheet else mascotSheet
             if (sheet != null) {
                 val columns = if (useReaction) 3 else 4
-                val cell = sheet.width / columns
-                val index = if (useReaction) reactionIndex else if ((tick / 10) % 5 == 0) 1 else 0
+                val rows = if (useReaction) 3 else 4
+                val cellW = sheet.width / columns
+                val cellH = sheet.height / rows
+                val index = if (useReaction) reactionIndex else {
+                    // Rotate through distinct idle expressions to make the mascot feel alive.
+                    val idleFrames = intArrayOf(0, 1, 4, 5, 8, 9, 11, 15)
+                    idleFrames[(tick / 34) % idleFrames.size]
+                }
                 val col = index % columns
                 val row = index / columns
-                val src = android.graphics.Rect(col * cell, row * cell, (col + 1) * cell, (row + 1) * cell)
+                val src = android.graphics.Rect(col * cellW, row * cellH, (col + 1) * cellW, (row + 1) * cellH)
                 val dst = android.graphics.RectF(left, top, left + drawSize, top + drawSize)
                 canvas.drawBitmap(sheet, src, dst, paint)
             } else {
-                // Temporary fallback until the approved PNG sheets are added to drawable-nodpi.
+                // Fallback remains until the sprite PNG resources are included in the APK.
                 val scale = drawSize / 64f
                 canvas.save()
                 canvas.translate(left, top)

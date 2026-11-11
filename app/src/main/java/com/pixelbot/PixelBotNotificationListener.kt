@@ -6,16 +6,19 @@ import android.service.notification.StatusBarNotification
 
 class PixelBotNotificationListener : NotificationListenerService() {
     override fun onNotificationPosted(sbn: StatusBarNotification) {
+        // React to every app, except PixelBot itself. Only the package identifier is inspected.
+        // Never read extras, title, sender, ticker, or notification/message text.
+        if (sbn.packageName == packageName) return
+
         val source = when (sbn.packageName) {
             "com.vkontakte.android" -> "vk"
             "org.telegram.messenger" -> "telegram"
-            else -> return
+            else -> "other"
         }
 
-        // Deliberately do not inspect notification extras, title, sender, or message text.
         val intent = Intent(this, PixelBotOverlayService::class.java)
             .setAction(PixelBotOverlayService.ACTION_NOTIFICATION)
             .putExtra(PixelBotOverlayService.EXTRA_SOURCE, source)
-        startService(intent)
+        runCatching { startService(intent) }
     }
 }
