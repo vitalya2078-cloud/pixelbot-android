@@ -46,7 +46,9 @@ class MainActivity : Activity() {
                 } else {
                     PixelBotOverlayService.ACTION_SHOW
                 }
-                startService(Intent(this, PixelBotOverlayService::class.java).setAction(action))
+                val serviceIntent = Intent(this@MainActivity, PixelBotOverlayService::class.java)
+                serviceIntent.action = action
+                startService(serviceIntent)
             }
         })
         setContentView(layout)
