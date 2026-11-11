@@ -15,39 +15,50 @@ class MainActivity : Activity() {
 
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(32, 48, 32, 32)
+            setPadding(28, 40, 28, 28)
         }
         layout.addView(TextView(this).apply {
             text = "PixelBot"
-            textSize = 30f
+            textSize = 32f
+            setPadding(0, 0, 0, 8)
         })
         layout.addView(TextView(this).apply {
-            text = "A tiny companion for VK and Telegram notifications. PixelBot checks only which app sent a notification; it does not read message contents."
+            text = "Маленький компаньон для VK и Telegram. PixelBot определяет только приложение-источник уведомления и не читает текст, имя отправителя или заголовок."
             textSize = 16f
-            setPadding(0, 16, 0, 24)
+            setPadding(0, 0, 0, 20)
+        })
+        layout.addView(TextView(this).apply {
+            text = "1. Разреши показ поверх других приложений.\n2. Разреши ограниченные настройки, если Android заблокировал доступ к уведомлениям: открой сведения о PixelBot → меню ⋮ → «Разрешить ограниченные настройки».\n3. После этого включи PixelBot в разделе доступа к уведомлениям."
+            textSize = 14f
+            setPadding(0, 0, 0, 18)
         })
         layout.addView(Button(this).apply {
-            text = "Allow display over other apps"
+            text = "Открыть настройки PixelBot"
+            setOnClickListener {
+                startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+            }
+        })
+        layout.addView(Button(this).apply {
+            text = "Разрешить показ поверх окон"
             setOnClickListener {
                 startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
             }
         })
         layout.addView(Button(this).apply {
-            text = "Enable notification access"
+            text = "Открыть доступ к уведомлениям"
             setOnClickListener {
                 startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"))
             }
         })
         layout.addView(Button(this).apply {
-            text = "Show / hide mascot"
+            text = "Показать / скрыть маскота"
             setOnClickListener {
-                val action = if (PixelBotOverlayService.isVisible) {
-                    PixelBotOverlayService.ACTION_HIDE
-                } else {
-                    PixelBotOverlayService.ACTION_SHOW
+                if (!Settings.canDrawOverlays(this@MainActivity)) {
+                    startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+                    return@setOnClickListener
                 }
-                val serviceIntent = Intent(this@MainActivity, PixelBotOverlayService::class.java)
-                serviceIntent.action = action
+                val action = if (PixelBotOverlayService.isVisible) PixelBotOverlayService.ACTION_HIDE else PixelBotOverlayService.ACTION_SHOW
+                val serviceIntent = Intent(this@MainActivity, PixelBotOverlayService::class.java).apply { this.action = action }
                 startService(serviceIntent)
             }
         })
