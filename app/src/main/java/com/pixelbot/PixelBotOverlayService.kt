@@ -16,6 +16,7 @@ class PixelBotOverlayService : Service() {
     private lateinit var windowManager: WindowManager
     private var mascot: MascotView? = null
     private var params: WindowManager.LayoutParams? = null
+    private var currentSource: String = "idle"
 
     override fun onCreate() {
         super.onCreate()
@@ -25,7 +26,12 @@ class PixelBotOverlayService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_HIDE -> hideMascot()
-            ACTION_SHOW, ACTION_NOTIFICATION -> showMascot()
+            ACTION_SHOW -> { currentSource = "idle"; showMascot() }
+            ACTION_NOTIFICATION -> {
+                currentSource = intent.getStringExtra(EXTRA_SOURCE) ?: "notification"
+                showMascot()
+                mascot?.invalidate()
+            }
         }
         return START_NOT_STICKY
     }
@@ -72,6 +78,7 @@ class PixelBotOverlayService : Service() {
         })
         mascot = view
         params = layoutParams
+        isVisible = true
         windowManager.addView(view, layoutParams)
     }
 
@@ -79,6 +86,7 @@ class PixelBotOverlayService : Service() {
         mascot?.let { runCatching { windowManager.removeView(it) } }
         mascot = null
         params = null
+        isVisible = false
     }
 
     override fun onDestroy() {
@@ -90,6 +98,7 @@ class PixelBotOverlayService : Service() {
 
     class MascotView(context: android.content.Context) : View(context) {
         private val paint = Paint().apply { isAntiAlias = false }
+        private val service get() = context as PixelBotOverlayService
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
             val s = width / 64f
@@ -117,6 +126,16 @@ class PixelBotOverlayService : Service() {
             block(outline, 22f, 24f, 26f, 30f)
             block(outline, 38f, 24f, 42f, 30f)
             block(outline, 29f, 34f, 35f, 37f)
+            // Tiny source marker: blue for Telegram, violet for VK, no message data.
+            val marker = when (service.currentSource) {
+                "telegram" -> Color.rgb(45, 155, 225)
+                "vk" -> Color.rgb(110, 105, 220)
+                else -> Color.TRANSPARENT
+            }
+            if (marker != Color.TRANSPARENT) {
+                block(outline, 48f, 7f, 61f, 20f)
+                block(marker, 50f, 9f, 59f, 18f)
+            }
             canvas.restore()
         }
     }
