@@ -99,12 +99,17 @@ class PixelBotOverlayService : Service() {
 
     inner class MascotView(context: android.content.Context) : View(context) {
         private val paint = Paint().apply { isFilterBitmap = false; isAntiAlias = false }
-        private val mascotSheet: Bitmap = BitmapFactory.decodeResource(resources, R.drawable.mascot_sheet)
-        private val reactionSheet: Bitmap = BitmapFactory.decodeResource(resources, R.drawable.reactions_sheet)
+        private val mascotSheet: Bitmap? = loadSheet("mascot_sheet")
+        private val reactionSheet: Bitmap? = loadSheet("reactions_sheet")
+
+        private fun loadSheet(name: String): Bitmap? {
+            val id = resources.getIdentifier(name, "drawable", packageName)
+            return if (id != 0) BitmapFactory.decodeResource(resources, id) else null
+        }
         private var reactionIndex = -1
         private var reactionUntil = 0L
         private var tick = 0
-        private val frameSize = mascotSheet.width / 4
+        private val frameSize = mascotSheet?.width?.div(4) ?: 0
 
         fun setReaction(source: String) {
             reactionIndex = when (source) {
@@ -127,24 +132,39 @@ class PixelBotOverlayService : Service() {
             val top = (height - drawSize) / 2f + bob
             val left = (width - drawSize) / 2f
 
-            val sheet: Bitmap
-            val cell: Int
-            val index: Int
-            if (useReaction) {
-                sheet = reactionSheet
-                cell = sheet.width / 3
-                index = reactionIndex
+            val sheet = if (useReaction) reactionSheet else mascotSheet
+            if (sheet != null) {
+                val columns = if (useReaction) 3 else 4
+                val cell = sheet.width / columns
+                val index = if (useReaction) reactionIndex else if ((tick / 10) % 5 == 0) 1 else 0
+                val col = index % columns
+                val row = index / columns
+                val src = android.graphics.Rect(col * cell, row * cell, (col + 1) * cell, (row + 1) * cell)
+                val dst = android.graphics.RectF(left, top, left + drawSize, top + drawSize)
+                canvas.drawBitmap(sheet, src, dst, paint)
             } else {
-                sheet = mascotSheet
-                cell = frameSize
-                // Alternate idle and happy frames while gently floating.
-                index = if ((tick / 10) % 5 == 0) 1 else 0
+                // Temporary fallback until the approved PNG sheets are added to drawable-nodpi.
+                val scale = drawSize / 64f
+                canvas.save()
+                canvas.translate(left, top)
+                canvas.scale(scale, scale)
+                fun block(color: Int, l: Float, t: Float, r: Float, b: Float) {
+                    paint.color = color
+                    canvas.drawRect(l, t, r, b, paint)
+                }
+                val outline = android.graphics.Color.rgb(55, 24, 20)
+                val orange = android.graphics.Color.rgb(248, 126, 67)
+                block(outline, 9f, 12f, 55f, 49f)
+                block(orange, 13f, 15f, 51f, 46f)
+                block(orange, 5f, 23f, 59f, 39f)
+                block(outline, 15f, 45f, 23f, 55f)
+                block(outline, 27f, 45f, 35f, 55f)
+                block(outline, 39f, 45f, 47f, 55f)
+                block(outline, 22f, 24f, 26f, 31f)
+                block(outline, 38f, 24f, 42f, 31f)
+                block(outline, 29f, 34f, 35f, 37f)
+                canvas.restore()
             }
-            val col = index % if (useReaction) 3 else 4
-            val row = index / if (useReaction) 3 else 4
-            val src = android.graphics.Rect(col * cell, row * cell, (col + 1) * cell, (row + 1) * cell)
-            val dst = android.graphics.RectF(left, top, left + drawSize, top + drawSize)
-            canvas.drawBitmap(sheet, src, dst, paint)
             if (!useReaction && reactionIndex >= 0 && now >= reactionUntil) reactionIndex = -1
             postInvalidateDelayed(70L)
         }
