@@ -2,20 +2,25 @@ package com.pixelbot
 
 import android.app.Service
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.PixelFormat
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
-import android.graphics.Color
-import android.view.MotionEvent
+import kotlin.math.sin
 
 class PixelBotOverlayService : Service() {
     private lateinit var windowManager: WindowManager
     private var mascot: MascotView? = null
     private var params: WindowManager.LayoutParams? = null
+    private val handler = Handler(Looper.getMainLooper())
     private var currentSource: String = "idle"
 
     override fun onCreate() {
@@ -28,28 +33,26 @@ class PixelBotOverlayService : Service() {
             ACTION_HIDE -> hideMascot()
             ACTION_SHOW -> { currentSource = "idle"; showMascot() }
             ACTION_NOTIFICATION -> {
-                currentSource = intent?.getStringExtra(EXTRA_SOURCE) ?: "notification"
+                currentSource = intent.getStringExtra(EXTRA_SOURCE) ?: "notification"
                 showMascot()
-                mascot?.invalidate()
+                mascot?.setReaction(currentSource)
             }
         }
         return START_NOT_STICKY
     }
 
     private fun showMascot() {
-        if (mascot != null) return
-        if (!android.provider.Settings.canDrawOverlays(this)) return
-
+        if (mascot != null || !android.provider.Settings.canDrawOverlays(this)) return
+        val size = (112 * resources.displayMetrics.density).toInt()
         val view = MascotView(this)
         val layoutParams = WindowManager.LayoutParams(
-            64, 64,
+            size, size,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.END
-            x = 18
+            x = 12
             y = 180
         }
         view.setOnTouchListener(object : View.OnTouchListener {
@@ -60,10 +63,8 @@ class PixelBotOverlayService : Service() {
             override fun onTouch(v: View, event: MotionEvent): Boolean {
                 when (event.action) {
                     MotionEvent.ACTION_DOWN -> {
-                        downX = event.rawX
-                        downY = event.rawY
-                        startX = layoutParams.x
-                        startY = layoutParams.y
+                        downX = event.rawX; downY = event.rawY
+                        startX = layoutParams.x; startY = layoutParams.y
                         return true
                     }
                     MotionEvent.ACTION_MOVE -> {
@@ -96,47 +97,56 @@ class PixelBotOverlayService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    class MascotView(context: android.content.Context) : View(context) {
-        private val paint = Paint().apply { isAntiAlias = false }
-        private val service get() = context as PixelBotOverlayService
+    inner class MascotView(context: android.content.Context) : View(context) {
+        private val paint = Paint().apply { isFilterBitmap = false; isAntiAlias = false }
+        private val mascotSheet: Bitmap = BitmapFactory.decodeResource(resources, R.drawable.mascot_sheet)
+        private val reactionSheet: Bitmap = BitmapFactory.decodeResource(resources, R.drawable.reactions_sheet)
+        private var reactionIndex = -1
+        private var reactionUntil = 0L
+        private var tick = 0
+        private val frameSize = mascotSheet.width / 4
+
+        fun setReaction(source: String) {
+            reactionIndex = when (source) {
+                "vk" -> 1
+                "telegram" -> 2
+                else -> 0
+            }
+            reactionUntil = System.currentTimeMillis() + 2600L
+            invalidate()
+        }
+
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
-            val s = width / 64f
-            canvas.save()
-            canvas.scale(s, s)
-            fun block(color: Int, l: Float, t: Float, r: Float, b: Float) {
-                paint.color = color
-                canvas.drawRect(l, t, r, b, paint)
+            tick++
+            val now = System.currentTimeMillis()
+            val useReaction = reactionIndex >= 0 && now < reactionUntil
+            val bob = (sin(tick / 7.0) * 3.5f * resources.displayMetrics.density)
+            val target = (width * 0.94f)
+            val drawSize = target
+            val top = (height - drawSize) / 2f + bob
+            val left = (width - drawSize) / 2f
+
+            val sheet: Bitmap
+            val cell: Int
+            val index: Int
+            if (useReaction) {
+                sheet = reactionSheet
+                cell = sheet.width / 3
+                index = reactionIndex
+            } else {
+                sheet = mascotSheet
+                cell = frameSize
+                // Alternate idle and happy frames while gently floating.
+                index = if ((tick / 10) % 5 == 0) 1 else 0
             }
-            val outline = Color.rgb(76, 35, 27)
-            val orange = Color.rgb(245, 125, 65)
-            val shade = Color.rgb(207, 78, 43)
-            // Compact wide creature silhouette, not a star or robot.
-            block(outline, 13f, 12f, 51f, 48f)
-            block(outline, 8f, 20f, 56f, 40f)
-            block(orange, 15f, 14f, 49f, 46f)
-            block(orange, 10f, 22f, 54f, 38f)
-            block(shade, 15f, 40f, 49f, 46f)
-            // Four tiny feet.
-            block(outline, 17f, 46f, 24f, 54f)
-            block(outline, 27f, 46f, 34f, 54f)
-            block(outline, 37f, 46f, 44f, 54f)
-            block(outline, 47f, 46f, 52f, 54f)
-            // Face.
-            block(outline, 22f, 24f, 26f, 30f)
-            block(outline, 38f, 24f, 42f, 30f)
-            block(outline, 29f, 34f, 35f, 37f)
-            // Tiny source marker: blue for Telegram, violet for VK, no message data.
-            val marker = when (service.currentSource) {
-                "telegram" -> Color.rgb(45, 155, 225)
-                "vk" -> Color.rgb(110, 105, 220)
-                else -> Color.TRANSPARENT
-            }
-            if (marker != Color.TRANSPARENT) {
-                block(outline, 48f, 7f, 61f, 20f)
-                block(marker, 50f, 9f, 59f, 18f)
-            }
-            canvas.restore()
+            val col = index % if (useReaction) 3 else 4
+            val row = index / if (useReaction) 3 else 4
+            val src = android.graphics.Rect(col * cell, row * cell, (col + 1) * cell, (row + 1) * cell)
+            val dst = android.graphics.RectF(left, top, left + drawSize, top + drawSize)
+            canvas.drawBitmap(sheet, src, dst, paint)
+            if (!useReaction && reactionIndex >= 0 && now >= reactionUntil) reactionIndex = -1
+            postInvalidateDelayed(70L)
         }
     }
 
