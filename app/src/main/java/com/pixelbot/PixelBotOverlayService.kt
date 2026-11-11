@@ -28,7 +28,7 @@ class PixelBotOverlayService : Service() {
             ACTION_HIDE -> hideMascot()
             ACTION_SHOW -> { currentSource = "idle"; showMascot() }
             ACTION_NOTIFICATION -> {
-                currentSource = intent.getStringExtra(EXTRA_SOURCE) ?: "notification"
+                currentSource = intent?.getStringExtra(EXTRA_SOURCE) ?: "notification"
                 showMascot()
                 mascot?.invalidate()
             }
